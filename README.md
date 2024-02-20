@@ -15,13 +15,14 @@ This Python script interacts with the VirusTotal API to scan files, stores resul
 - Python (3.6 or higher)
 - MongoDB
 - Git (optional)
+- Install all the dependencies as well
 
 ## Usage
 
 1. **Run the Script:**
 
     ```bash
-    python devops_project.py
+    python "projectname".py
     ```
 
 2. **Follow Prompts:**
