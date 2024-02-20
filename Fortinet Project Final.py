@@ -1,206 +1,126 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sun May  1 00:40:06 2022
+# Importing necessary libraries
+import os
+import requests
+from datetime import datetime
+from json2html import json2html
+from flask import Flask
+import webbrowser
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+from pymongo import MongoClient
 
-@author: cheru
-"""
+# Create the MongoDB client and database
+client = MongoClient('mongodb+srv://cherub_randhawa:csrS*1897@cluster0.ujhb8.mongodb.net/virustotal?retryWrites=true&w=majority')
+db = client.VirustotalFinal
+stored_results = db.storedresults
 
-import requests             #needed to access eg. the API post and get 
-from json2html import *     #to convert json output to html
-from flask import Flask     # needed for making a web app script
-import webbrowser           # to open html files in python script
-from datetime import *      # to use date time features
-import os                   # used to get the file size in below code
-import smtplib              #to access the SMTP server for sending emails
-from email.mime.multipart import MIMEMultipart    #to attach seperate messages to email(different contents)
-from email.mime.text import MIMEText              #to echange text over email
-from email.mime.base import MIMEBase   
-from email import encoders  #encoding needed for MTAs(Mssg transfer agent) to properly process the
-from pymongo import MongoClient                   # to create and access the mongo database
-from pprint import pprint   #To print Data Structures in a readable way
+# Function to scan and deliver results
+def devops_project(target_file):
+    api_key = input("Enter your API KEY: ")
+    virus_total_scan_api = "https://www.virustotal.com/vtapi/v2/file/scan"
+    params_scan = {"apikey": api_key}
 
-#Create the database and its collection
+    with open(target_file, "rb") as input_file:
+        response_scan = requests.post(virus_total_scan_api, files={"file": input_file}, params=params_scan)
+        scan_analysis = response_scan.json()
 
-client=MongoClient('mongodb+srv://cherub_randhawa:csrS*1897@cluster0.ujhb8.mongodb.net/virustotal?retryWrites=true&w=majority')
+    scan_id = scan_analysis.get('scan_id')
 
-db=client.VirustotalFinal
+    stored_results.create_index("CreatedAt", expireAfterSeconds=86400)
 
-storedresults=db.storedresults
+    stored_result = stored_results.find_one({"scanId": scan_id}, {'Report': 1})
 
-#Defining a function to Scan and Deliver the results of file attached
+    if stored_result:
+        result = stored_result['Report']
+        write_to_html(result, 'result.html')
+        return webbrowser.open('result.html')
 
-def Devopsproject(targetfile):
+    virus_total_report_api = "https://www.virustotal.com/vtapi/v2/file/report"
+    params_report = {"apikey": api_key, "resource": scan_id}
+    response_report = requests.get(virus_total_report_api, params=params_report)
+    report = response_report.json()
 
-    ApiKey=input("Enter your API KEY ")
-
-    VirusTotalScan_API= "https://www.virustotal.com/vtapi/v2/file/scan" #To connect to VirusTotal
-
-    ParamsScan={"apikey":ApiKey}                                        #Get the API KEY for authentication
-
-    InputFile={"file": open(targetfile,"rb")}                           #Opening in the file in binary read format
-
-    ResponseScan=requests.post(VirusTotalScan_API,files=InputFile, params=ParamsScan)
-
-    ScanAnalysis=ResponseScan.json()                                    #Converting the reposnse into json file
-
-    ScanId=ScanAnalysis['scan_id']                                      #Retreiving Scanid for futrther use
-    
-    storedresults.create_index("CreatedAt", expireAfterSeconds=86400)   #To clear the database after every 24 hours i.e86400 seconds
-    
-    cursor=storedresults.find({},{'scanId':ScanId,'Report':1})          #Finding the cursor of desired ScanId
-    
-    store={}
-    
-    #If ScanId exists in database it would be retreived from it and a webpage would be opened
-    
-    if cursor is not None:
-
-        for i in cursor:
-            
-            store=i
-        
-        if  store and store['scanId']==ScanId:  #if store is not empty and scna id is present in it
-        
-            result=store['Report']
-            
-            f=open('result.html','w')     
-
-            f.write(result)
-
-            f.close()
-
-            return webbrowser.open('result.html') 
-    
-    #To retreive take the scan to website and retrive results from there in case nothing is there in Database
-
-    VirusTotalReport_API="https://www.virustotal.com/vtapi/v2/file/report"
-
-    ParamsReport={"apikey":ApiKey,
-
-                  "resource":ScanAnalysis['scan_id']}     #to retreive reports using api key and resorce whiche here is scanid
-
-    ResponseReport=requests.get(VirusTotalReport_API,params=ParamsReport)
-
-    Report=ResponseReport.json()                          #Converting report to json file
-
-    if Report['response_code']==1:
-
-        HTMLReport="<html>" + "<body>" + json2html.convert(json = Report)+ "</body>" + "</html>"    #Converting json file to HTML and adding html tag to it
-        
-        Printreport=open('Printreport.html','w')          #Open report and write html file on it
-
-        Printreport.write(HTMLReport)
-
-        Printreport.close()
-
-        Report2bStored={'scanId':ScanId,'Report':HTMLReport,'CreatedAt':datetime.utcnow()}          #Store data in database with following keys and a time tage for TTL
-
-        storedresults.insert_one(Report2bStored)         #Add report to database collection
-
-        return webbrowser.open('Printreport.html')       #Open the html file 
-
+    if report.get('response_code') == 1:
+        html_report = "<html><body>" + json2html.convert(json=report) + "</body></html>"
+        write_to_html(html_report, 'Printreport.html')
+        report_to_store = {'scanId': scan_id, 'Report': html_report, 'CreatedAt': datetime.utcnow()}
+        stored_results.insert_one(report_to_store)
+        return webbrowser.open('Printreport.html')
     else:
+        print("Your resource is queued for analysis. Please try again later after a few minutes.")
 
-        print("Your resource is queued for analysis please try again later after few minutes")
+# Function to scan and deliver results for larger files
+def devops_project_larger(target_file, target_email):
+    api_key = input("Enter your API KEY: ")
+    virus_total_scan_api = "https://www.virustotal.com/vtapi/v2/file/scan"
+    params_scan = {"apikey": api_key}
 
-#If the file size is large send it to mail and store and retreive from database same as above
-            
-def DevopsProjectLarger(targetfile,TargetEmail):
+    with open(target_file, "rb") as input_file:
+        response_scan = requests.post(virus_total_scan_api, files={"file": input_file}, params=params_scan)
+        scan_analysis = response_scan.json()
 
-    ApiKey=input("Enter your API KEY ")
+    scan_id = scan_analysis.get('scan_id')
 
-    VirusTotalScan_API= "https://www.virustotal.com/vtapi/v2/file/scan"
-    
-    ParamsScan={"apikey":ApiKey}
-    
-    InputFile={"file": open(targetfile,"rb")}
-    
-    ResponseScan=requests.post(VirusTotalScan_API,files=InputFile, params=ParamsScan)
-    
-    ScanAnalysis=ResponseScan.json()
-    
-    ScanId=ScanAnalysis['scan_id']
-    
-    storedresults.create_index("CreatedAt", expireAfterSeconds=86400)
-    
-    cursor=storedresults.find({},{'scanId':ScanId,'Report':1})
-    
-    store={}
-    
-    if cursor is not None:
+    stored_results.create_index("CreatedAt", expireAfterSeconds=86400)
 
-        for i in cursor:
-            
-            store=i
-        
-        if  store and store['scanId']==ScanId:
-            
-            print("Your scan results are present in database")
-        
-            result=store['Report']
-            
-            f=open('result.html','w')
+    stored_result = stored_results.find_one({"scanId": scan_id}, {'Report': 1})
 
-            f.write(result)
+    if stored_result:
+        print("Your scan results are present in the database.")
+        result = stored_result['Report']
+        write_to_html(result, 'result.html')
+        return webbrowser.open('result.html')
 
-            f.close()
+    virus_total_report_api = "https://www.virustotal.com/vtapi/v2/file/report"
+    params_report = {"apikey": api_key, "resource": scan_id}
+    response_report = requests.get(virus_total_report_api, params=params_report)
+    report = response_report.json()
 
-            return webbrowser.open('result.html')
-    
-    VirusTotalReport_API="https://www.virustotal.com/vtapi/v2/file/report"
-    
-    ParamsReport={"apikey":ApiKey,
-                  "resource":ScanAnalysis['scan_id']}
-    
-    ResponseReport=requests.get(VirusTotalReport_API,params=ParamsReport)
-    
-    Report=ResponseReport.json()
-    
-    if Report['response_code']==1:
+    if report.get('response_code') == 1:
+        html_report = "<html><body>" + json2html.convert(json=report) + "</body></html>"
+        write_to_html(html_report, 'Printreport.html')
+        report_to_store = {'scanId': scan_id, 'Report': html_report, 'CreatedAt': datetime.utcnow()}
+        stored_results.insert_one(report_to_store)
 
-        HTMLReport="<html>" + "<body>" + json2html.convert(json = Report)+ "</body>" + "</html>"
-        
-        Printreport=open('printreport.html','w')
+        # Sending email with results
+        send_email(target_email, 'Printreport.html')
+        return print("Check your email in a few minutes.")
+    else:
+        print("Your resource is queued for analysis. Please try again later after a few minutes.")
 
-        Printreport.write(HTMLReport)
-        
-        Printreport.close()
-        
-        Report2bStored={'scanId':ScanId,'Report':HTMLReport,'CreatedAt':datetime.utcnow()}
+# Function to write HTML content to a file
+def write_to_html(content, file_name):
+    with open(file_name, 'w') as file:
+        file.write(content)
 
-        storedresults.insert_one(Report2bStored)
-        
-        #Below snippet is used to access SMTP server and send results over email    
-        html=open("Printreport.html")
-        msg=MIMEText(html.read(),'html')     #Read HTML file and store it in msg
-        msg['From']='cherubs@gmail.com'
-        msg['To']=TargetEmail
-        msg['Subject']='Query Results form VirusTotal'
-        mailserver=smtplib.SMTP('smtp.gmail.com',587)     #Accesing gmail server
+# Function to send email with HTML file attachment
+def send_email(target_email, html_file):
+    from_email = 'cherubs@gmail.com'
+    password = 'cherub1897'
+
+    msg = MIMEMultipart()
+    msg['From'] = from_email
+    msg['To'] = target_email
+    msg['Subject'] = 'Query Results from VirusTotal'
+
+    with open(html_file, 'r') as html:
+        body = MIMEText(html.read(), 'html')
+
+    msg.attach(body)
+
+    with smtplib.SMTP('smtp.gmail.com', 587) as mailserver:
         mailserver.starttls()
-        mailserver.login("cherub.project80@gmail.com","cherub1897")
-        text=msg.as_string()                              #Convert msg as string
-        mailserver.sendmail('cherub.prpject80@gmail.com',TargetEmail,text)   #Send that HTML file over email
-        mailserver.quit()
-        print("Check your email in few minutes")
-    
-    else:
+        mailserver.login(from_email, password)
+        mailserver.sendmail(from_email, target_email, msg.as_string())
+        print("Email sent successfully.")
 
-        print("Your resource is queued for analysis please try again later after few minutes")
-    
-    
-#####DRIVER CODE BELOW#####    
-            
-        
-        
-if os.path.getsize('my_file.txt')> 1000000:                   #if file size is greater than 1mb
-        print("It may take time to analyze your query, no need to wait your results will be sent on your email")
-        
-        TargetEmail=input(" Please Enter your Email Address ")
-        
-        DevopsProjectLarger('my_file.txt',TargetEmail)
-        
+# Driver code
+if os.path.getsize('my_file.txt') > 1000000:
+    print("It may take time to analyze your query. No need to wait; your results will be sent to your email.")
+    target_email = input("Please enter your Email Address: ")
+    devops_project_larger('my_file.txt', target_email)
 else:
-    
-    Devopsproject('my_file.txt')
-
+    devops_project('my_file.txt')
