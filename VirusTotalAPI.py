@@ -13,11 +13,18 @@ from email import encoders
 from pymongo import MongoClient
 from dotenv import load_dotenv
 
+load_dotenv
+
 # Create the MongoDB client and database 
-username = 'cherub_randhawa'
-client = MongoClient('mongodb+srv://cherub_randhawa:csrS*1897@cluster0.ujhb8.mongodb.net/virustotal?retryWrites=true&w=majority')
-db = client.VirustotalFinal
-stored_results = db.storedresults
+username = os.getenv('MONGODB_USERNAME')
+password = os.getenv('MONGODB_PASSWORD')
+cluster = os.getenv('MONGODB_CLUSTER')
+database_name = os.getenv('MONGODB_DATABASE')
+
+connected_string = f'mongodb+srv://{username}:{password}@{cluster}/{database_name}?retryWrites=true&w=majority'
+client = MongoClient(connected_string)
+virustotal_db = client.VirustotalFinal
+stored_results_collection = virustotal_db.storedresults
 
 # Function to scan and deliver results
 def devops_project(target_file):
