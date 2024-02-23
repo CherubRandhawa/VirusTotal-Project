@@ -105,25 +105,39 @@ def write_to_html(content, file_name):
     with open(file_name, "w") as file:
         file.write(content)
 
-# Function to send email with HTML file attachment
 def send_email(target_email, html_file):
-    from_email = "cherubs@gmail.com"
-    password = "cherub1897"
+    """
+    Sends an email with an HTML file attachment containing VirusTotal query results.
 
-    msg = MIMEMultipart()
-    msg["From"] = from_email
-    msg["To"] = target_email
-    msg["Subject"] = 'Query Results from VirusTotal'
+    Parameters:
+    - recipient_email (str): The recipient's email address.
+    - html_file_path (str): The file path to the HTML file with query results.
+
+    Environment Variables:
+    - USER_EMAIL: Sender's email address.
+    - USER_PASSWORD: Sender's email account password.
+
+    Raises:
+    - smtplib.SMTPException: If an error occurs during the email sending process.
+
+    """
+    from_email = os.getenv("USER_EMAIL")
+    password = os.getenv("USER_PASSWORD")
+
+    message = MIMEMultipart()
+    message["From"] = from_email
+    message["To"] = target_email
+    message["Subject"] = 'Query Results from VirusTotal'
 
     with open(html_file, "r") as html:
         body = MIMEText(html.read(), "html")
 
-    msg.attach(body)
+    message.attach(body)
 
     with smtplib.SMTP("smtp.gmail.com", 587) as mailserver:
         mailserver.starttls()
         mailserver.login(from_email, password)
-        mailserver.sendmail(from_email, target_email, msg.as_string())
+        mailserver.sendmail(from_email, target_email, message.as_string())
         print("Email sent successfully.")
 
 # Driver code
