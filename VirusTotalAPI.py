@@ -100,9 +100,19 @@ def devops_project_larger(target_file, target_email):
     else:
         print("Your resource is queued for analysis. Please try again later after a few minutes.")
 
-# Function to write HTML content to a file
 def write_to_html(content, file_name):
-    with open(file_name, "w") as file:
+    """
+    Writes HTML content to a file.
+
+    Parameters:
+    - content (str): HTML content to be written.
+    - file_name (str): File path where the HTML content will be saved.
+
+    Returns:
+    None
+    """
+
+    with open(file_name, "w", encoding="utf-8") as file:
         file.write(content)
 
 def send_email(target_email, html_file):
@@ -121,6 +131,7 @@ def send_email(target_email, html_file):
     - smtplib.SMTPException: If an error occurs during the email sending process.
 
     """
+    
     from_email = os.getenv("USER_EMAIL")
     password = os.getenv("USER_PASSWORD")
 
